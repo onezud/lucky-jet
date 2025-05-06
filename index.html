@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lucky Jet Telegram Mini App</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: #1a1a2e;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            font-family: Arial, sans-serif;
+            overflow: hidden;
+        }
+        .game-container {
+            width: 100%;
+            max-width: 360px;
+            height: 640px;
+            position: relative;
+            background: url('bg.jpg') no-repeat center center;
+            background-size: cover;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        .clouds-container {
+            position: absolute;
+            bottom: 0; /* Облака внизу экрана */
+            width: 100%;
+            height: 200px; /* Высота области облаков */
+            overflow: hidden;
+        }
+        .clouds {
+            position: absolute;
+            width: 200%; /* Двойная ширина для цикла прямого и зеркального изображения */
+            height: 100%;
+            background: url('clouds.svg') 0 0 / 50% 100% repeat-x, /* Прямое изображение */
+                        url('clouds.svg') 50% 0 / 50% 100% repeat-x; /* Зеркальное изображение */
+            background-position: 0 0, 100% 0; /* Позиционируем изображения рядом */
+            transform-origin: 0 0;
+            animation: moveClouds 20s linear infinite;
+        }
+        .clouds::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 50%;
+            width: 100%;
+            height: 100%;
+            transform: scaleX(-1); /* Зеркальное отражение второй половины */
+        }
+        @keyframes moveClouds {
+            0% { transform: translateX(0); }
+            100% { transform: translateX(-50%); } /* Сдвиг на половину ширины для цикла */
+        }
+        .multiplier {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            font-size: 64px;
+            color: #b535f5;
+            font-weight: bold;
+            transform: translate(-50%, -50%);
+            z-index: 10;
+        }
+        .jet-container {
+            position: absolute; /* Используем absolute, чтобы джет был привязан к .game-container */
+            top: 50%; /* Размещаем джет в середине по высоте */
+            left: 0; /* Прижимаем джет к левому краю */
+            transform: translateY(-50%); /* Центрируем по вертикали относительно своей высоты */
+            animation: hoverJet 3s linear infinite;
+        }
+        .jet {
+            width: 90px; /* Измените ширину джета */
+            height: 90px; /* Измените высоту джета */
+            background: url('jet.webp') no-repeat center center;
+            background-size: contain;
+            transform: rotate(0deg); /* Измените угол наклона джета (например, rotate(10deg) для наклона вправо) */
+            position: relative; /* Обеспечиваем работу z-index */
+            z-index: 2; /* Джет выше огня */
+        }
+        .fire {
+            width: 50px; /* Измените ширину огня */
+            height: 50px; /* Измените высоту огня */
+            background: url('fire.svg') no-repeat center center;
+            background-size: contain;
+            position: absolute;
+            bottom: -17px; /* Измените это значение, чтобы поднять или опустить огонь относительно джета (например, bottom: -10px для меньшего отступа) */
+            left: 5%; /* Измените это значение, чтобы сместить огонь левее или правее относительно джета (например, left: 40% для смещения влево) */
+            transform: translateX(-50%) rotate(225deg); /* Измените rotate(0deg), чтобы наклонить огонь (например, rotate(5deg)) */
+            z-index: 1; /* Огонь ниже джета */
+        }
+        @keyframes hoverJet {
+            0% { transform: translateY(0); }
+            50% { transform: translateY(-40px); }
+            100% { transform: translateY(0); }
+        }
+        .loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 100px;
+            height: 100px;
+            background: url('loading.svg') no-repeat center center;
+            background-size: contain;
+            display: none;
+            z-index: 20;
+        }
+        .luckyjet-logo {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 150px;
+            height: 50px;
+            background: url('luckyjet.svg') no-repeat center center;
+            background-size: contain;
+            z-index: 10;
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <div class="clouds-container">
+            <div class="clouds"></div>
+        </div>
+        <div class="luckyjet-logo"></div>
+        <div class="multiplier" id="multiplier">x1.00</div>
+        <div class="loading" id="loading"></div>
+        <div class="jet-container">
+            <div class="jet"></div>
+            <div class="fire"></div>
+        </div>
+    </div>
+
+    <script>
+        const tg = window.Telegram.WebApp;
+        tg.ready();
+        tg.expand();
+
+        const multiplierDisplay = document.getElementById('multiplier');
+        const loadingAnimation = document.getElementById('loading');
+        let lastDisplayedMultiplier = 'x1.00'; // Храним последний отображенный коэффициент
+
+        async function fetchGameState() {
+            try {
+                const response = await fetch('http://localhost:3000/game-state');
+                const data = await response.json();
+
+                // Если коэффициент изменился
+                if (data.hasChanged && data.multiplier !== lastDisplayedMultiplier) {
+                    // Показываем анимацию загрузки
+                    multiplierDisplay.style.display = 'none';
+                    loadingAnimation.style.display = 'block';
+
+                    // Ждем 3 секунды, затем отображаем новый коэффициент
+                    setTimeout(() => {
+                        loadingAnimation.style.display = 'none';
+                        multiplierDisplay.style.display = 'block';
+                        multiplierDisplay.textContent = data.multiplier;
+                        lastDisplayedMultiplier = data.multiplier; // Обновляем последний отображенный коэффициент
+                    }, 3000); // 3000 мс = 3 секунды
+                }
+            } catch (error) {
+                console.error('Ошибка получения состояния игры:', error);
+                multiplierDisplay.textContent = 'x1.00';
+                loadingAnimation.style.display = 'none';
+                multiplierDisplay.style.display = 'block';
+            }
+        }
+
+        // Обновляем состояние каждые 0.5 секунды
+        fetchGameState();
+        setInterval(fetchGameState, 500);
+    </script>
+</body>
+</html>
